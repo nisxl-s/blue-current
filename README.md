@@ -1,5 +1,3 @@
-> **Initial source sample:** This repository contains the project overview and two selected modules: the day/weather model and mouse camera controls. The full game source and build files have not been uploaded. The setup and build instructions below describe the complete local project, not this partial snapshot.
-
 <div align="center">
 
 # ⛵ Blue Current
