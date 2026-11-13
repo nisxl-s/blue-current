@@ -4,3 +4,5 @@ node_modules/
 dist/
 *.log
 github-*.png
+.env
+.env.*

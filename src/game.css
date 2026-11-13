@@ -6,3 +6,6 @@
 @media(max-width:700px){.captain-objective{left:12px;top:251px;width:180px;padding:10px 12px}.captain-objective strong{font-size:18px}.captain-objective small{font-size:7px}.captain-objective>span{font-size:9px}.masthead nav{gap:10px}.journal-button{font-size:0!important;width:29px;height:29px;padding:0!important}.journal-button:after{content:'⚓';font-size:21px}.captain-journal{width:calc(100% - 20px);padding:20px}.journal-heading h2{font-size:38px}.medal-grid,.journal-orders{grid-template-columns:1fr}.journal-tabs{gap:0;justify-content:space-between}.journal-tabs button{font-size:9px;padding:10px 7px}.rank-seal{width:45px;height:45px}.journal-total{display:none}.captain-summary strong{font-size:26px}.captain-summary span{font-size:10px}.journal-section-title span{display:none}.medal-notice{bottom:190px}}
 @media(max-height:650px) and (min-width:701px){.captain-objective{top:auto;bottom:125px}}
 @media(prefers-reduced-motion:reduce){.medal-notice{animation:none}.captain-objective{transition:none}}
+
+body:has(.pirate-hud:not([hidden])) .captain-objective,body:has(.voyage-hud:not([hidden])) .captain-objective{opacity:0;pointer-events:none}@media(max-width:380px){.captain-objective{width:calc(100vw - 200px)}}
+
