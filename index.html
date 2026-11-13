@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#07566a" />
+  <meta name="description" content="Captain Sea Wren across a living ocean. Take harbor contracts, follow dolphin guides, outrun pirates, and earn your place in the Captain's Journal." />
+  <title>Blue Current — An ocean adventure</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230b6872'/%3E%3Cpath d='M12 35h40l-8 13H22zM31 12v22H17z' fill='%23fcf6e8'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <canvas id="ocean" aria-label="Interactive ocean world. Use arrow keys or WASD to steer your boat. Use the destinations menu for direct navigation."></canvas>
+  <header class="masthead">
+    <a class="brand" href="#" aria-label="Blue Current home"><svg viewBox="0 0 36 36" fill="none"><path d="M5 22h26l-6 8H11L5 22ZM18 4v15H8L18 4ZM21 9l8 10h-8V9Z" fill="currentColor"/></svg><span>blue current<span class="brand-dot">®</span></span></a>
+    <nav aria-label="Main navigation"><button id="destinations">Destinations <span>↗</span></button><button id="sound" aria-pressed="false" aria-label="Enable ocean sound"><span class="sound-bars">▂▅▃</span> <span id="sound-label">Sound off</span></button><button id="menu" class="round-button" aria-label="Open navigation chart">☰</button></nav>
+  </header>
+  <main>
+    <section class="intro" id="intro">
+      <p class="eyebrow"><span class="live-dot"></span> AN OPEN-WATER ADVENTURE</p>
+      <h1>A little boat.<br>A sea of<br><em>stories.</em></h1>
+      <p class="intro-copy">Carry precious cargo. Follow a dolphin’s wake.<br>Outsail the raiders. Earn your captain’s colors.</p>
+      <button id="set-sail" class="primary">Let’s set sail <span>↗</span></button>
+      <span class="intro-footnote">J FOR YOUR JOURNAL · M FOR THE CHART · WASD TO SAIL</span>
+    </section>
+    <div id="world-labels" aria-hidden="true"></div>
+    <div class="coordinate"><span>EXPLORATION LOG / 001</span><strong id="coords">00° 00′ N &nbsp; 00° 00′ E</strong><strong id="tide-readout">RISING TIDE +0.00 m</strong></div>
+    <div class="sea-caption"><span class="tiny-star">✳</span> CHASE THE HORIZON.<br><span>BRING BACK A STORY.</span></div>
+    <aside id="prompt" class="proximity" hidden><span id="near-name">The lighthouse</span><button id="dock">Explore <kbd>E</kbd></button></aside>
+    <aside id="current-warning" hidden role="status"></aside><div id="toast" role="status" aria-live="polite"></div>
+    <aside class="ship-hud" aria-label="Sailboat status"><div class="ship-name">SEA WREN <span>01 / COASTAL CRUISER</span></div><div class="ship-readings"><div><strong id="speed-value">0.0</strong><small>KNOTS</small></div><div class="hull-info"><span>HULL INTEGRITY <b id="health-value">100%</b></span><div id="health-bar" role="progressbar" aria-label="Hull integrity" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i></i></div></div></div><span id="ship-state">AUXILIARY MOTOR / IDLE</span></aside>
+    <div class="camera-controls" aria-label="Camera zoom"><button id="zoom-in" aria-label="Zoom in">+</button><button id="zoom-out" aria-label="Zoom out">−</button></div>
+    <aside id="mooring-prompt" hidden><span id="mooring-text">TIDE HOUSE BERTH</span><button id="moor">Moor <kbd>F</kbd></button></aside>
+    <aside id="rescue" hidden role="status"><span>HULL BREACHED</span><h2>Every captain<br>gets a second voyage.</h2><p id="rescue-status">Sea Wren is taking on water.</p><button id="relaunch" class="primary">Relaunch sailboat <span>↗</span></button></aside>
+    <div class="bottom-hud">
+      <div class="controls"><div class="key-grid"><kbd>↑</kbd><span><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd></span></div><div><strong>Fair winds, captain.</strong><span>WASD to sail · Shift boost<br>F moor / cast off · R rescue</span></div></div>
+      <button class="map-preview" id="map-button" aria-label="Open the archipelago map"><canvas id="minimap" width="160" height="100"></canvas><span>THE ARCHIPELAGO <span>↗</span></span></button>
+      <div class="status"><span class="live-dot"></span><span>CALM SEAS. OPEN HORIZONS.</span><button id="reset" aria-label="Return boat to the starting point" title="Return to start">↺</button></div>
+    </div>
+    <div class="touch-controls" aria-label="Boat controls"><div><button data-key="ArrowLeft" aria-label="Steer left">←</button><button data-key="ArrowRight" aria-label="Steer right">→</button></div><div><button data-key="ArrowDown" aria-label="Reverse">↓</button><button data-key="ArrowUp" aria-label="Accelerate">↑</button><button data-key="Shift" aria-label="Boost engine">⚡</button></div></div>
+  </main>
+  <dialog id="chart"><div class="dialog-heading"><div><p class="eyebrow">ADMIRALTY / PORT REGISTER</p><h2>Ports of the archipelago.</h2></div><button class="close" data-close="chart" aria-label="Close chart">×</button></div><p class="dialog-copy">Consult the port register. Sail to a harbor or open its expedition brief below. Press M for the sea chart.</p><div id="destination-list"></div><div class="chart-footer"><span>5 PLACES TO DISCOVER</span><button id="standard-view">Read the harbor almanac ↗</button></div></dialog>
+  <dialog id="content"><div class="dialog-heading"><p class="eyebrow" id="content-category"></p><button class="close" data-close="content" aria-label="Close destination">×</button></div><div id="content-body"></div></dialog>
+  <div id="loading"><svg viewBox="0 0 36 36"><path d="M5 22h26l-6 8H11L5 22ZM18 4v15H8L18 4ZM21 9l8 10h-8V9Z" fill="currentColor"/></svg><p>Finding our sea legs…</p></div>
+  <noscript><section class="no-js"><h1>Blue Current</h1><p>This interactive boat experience needs JavaScript. Explore the archipelago, follow wildlife and chart your next voyage.</p></section></noscript>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
+
+
+
