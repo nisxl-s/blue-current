@@ -38,7 +38,7 @@ let sailing = false, nearest = null, soundOn = false, sceneReady = false;
 const audio=new MarineAudio();
 let captainStorage;try{captainStorage=window.localStorage;}catch{}
 const captain=createCaptainProgress(captainStorage);
-const journal=createCaptainJournal(captain,{onOpen:()=>keys.clear(),onTrail:()=>{trailActive=true;if(sceneReady&&!sailing)enterSailing();toast('Orange discovery trail active. Find the five buoys.');},onCourse:target=>{
+const journal=createCaptainJournal(captain,{onAward:()=>audio.effect('achievement'),onOpen:()=>{keys.clear();audio.effect('ui-click',.65);},onTrail:()=>{trailActive=true;if(sceneReady&&!sailing)enterSailing();toast('Orange discovery trail active. Find the five buoys.');},onCourse:target=>{
   if(!sceneReady)return;if(!sailing)enterSailing();const route=planVoyageRoute(boatPosition,[target],obstacles);if(route.length)guides?.setRoute(route);else toast('Mark an open-water approach on the sea chart.');
 },onEquip:p=>{const pennant=boat?.userData.sails?.at(-1);if(pennant)pennant.material.color.set(p.color);}});
 window.addEventListener('pagehide',()=>captain.save());
@@ -63,10 +63,10 @@ function restoreBoat(){
   $('rescue').hidden=true;document.body.classList.remove('ship-critical');toast('Sea Wren relaunched. Hull restored, hazards reset.');
 }
 function takeDamage(amount){
-  if(shipState!=='afloat'||amount<=0)return;health=Math.max(0,health-amount);document.body.classList.toggle('ship-critical',health<30);
+  if(shipState!=='afloat'||amount<=0)return;health=Math.max(0,health-amount);if(health<30)audio.effect('warning');document.body.classList.toggle('ship-critical',health<30);
   boat.userData.hull.material.color.set(health<30?'#604b44':health<65?'#39545d':'#174a62');
   vesselDamage?.hit(health,heading,speed);
-  if(health===0){shipState='sinking';sinkProgress=0;keys.clear();audio.effect('splash',.8);toast('Hull breached. Sea Wren is taking on water.');$('rescue').hidden=false;}
+  if(health===0){shipState='sinking';sinkProgress=0;keys.clear();audio.effect('splash',.8);audio.effect('defeat');toast('Hull breached. Sea Wren is taking on water.');$('rescue').hidden=false;}
 }
 function toggleMoor(){
   if(!marine||!sceneReady)return;
@@ -78,7 +78,8 @@ function toggleMoor(){
   shipState='moored';speed=0;keys.clear();toast('Moored at the tide house. The dock crew is repairing your hull.');
 }
 
-function toast(message) { $('toast').textContent=message; $('toast').classList.add('show'); clearTimeout(toast.timer); toast.timer=setTimeout(()=>$('toast').classList.remove('show'),3200); }
+function toast(message) { audio.effect('notice',.55);$('toast').textContent=message; $('toast').classList.add('show'); clearTimeout(toast.timer); toast.timer=setTimeout(()=>$('toast').classList.remove('show'),3200); }
+document.addEventListener('click',event=>{const button=event.target.closest?.('button');if(!button||button.disabled||button.id==='sound'||button.dataset.key)return;audio.effect(button.classList.contains('close')?'ui-close':'ui-click',.65);},true);
 function closeDialogs() { document.querySelectorAll('dialog[open]').forEach(d=>d.close()); keys.clear(); }
 function openChart() { closeDialogs(); $('chart').showModal(); }
 function enterSailing() { sailing=true; document.body.classList.add('sailing'); $('intro').inert=true; toast(innerWidth<800?'Take the helm with the touch controls below.':'You’re the captain. Arrows or WASD to sail.'); }
@@ -134,6 +135,7 @@ $('sound').onclick=async()=>{
   volumePanel.hidden=false;$('sound').setAttribute('aria-expanded','true');
   try {
     soundOn=await audio.toggle();
+    if(soundOn)audio.effect('ui-click',.65);
     $('sound').setAttribute('aria-pressed',String(soundOn));$('sound').setAttribute('aria-label',soundOn?'Disable ocean sound':'Enable ocean sound');$('sound-label').textContent=soundOn?'Sound on':'Sound off';
   }catch{toast('Ocean audio isn’t available in this browser.');}
 };
@@ -303,7 +305,7 @@ function drawMap(){navalMap?.draw({player:boatPosition,heading,discovered,pirate
   $('prompt').hidden=!nearest||!sailing||dialogOpen||nearMoor||(shipState!=='afloat'&&shipState!=='moored');if(nearest)$('near-name').textContent=nearest.title;
   if(trailActive&&shipState==='afloat')trailBuoys.forEach((b,i)=>{if(!b.collected&&Math.hypot(boatPosition.x-b.x,boatPosition.z-b.z)<2.4){b.collected=true;collected++;captain.event('buoys',String(i));b.object.visible=false;toast(collected===5?'All five buoys found. A fine bit of seamanship!':`Buoy discovered · ${collected} / 5`);}});
   const gullDistance=birds.reduce((n,b)=>Math.min(n,b.object.position.distanceTo(boatPosition)),80);
-  audio.update({time:elapsed,speed,throttle:up?1:down?.5:0,heave:(boat.position.y-oldY)/Math.max(dt,.001),alive:sailing&&shipState==='afloat',parked:shipState==='moored',gullDistance,hidden:document.hidden});
+  audio.update({time:elapsed,speed,throttle:up?1:down?.5:0,heave:(boat.position.y-oldY)/Math.max(dt,.001),alive:sailing&&shipState==='afloat',parked:shipState==='moored',gullDistance,hidden:document.hidden,situation:{threat:pirates?.active(),emerging:pirates?.state.phase==='emerging',storm:climate.storm,night:climate.night,health,edge:current.danger,urgent:captain.contract?.phase==='sailing'&&captain.contract.remaining<20}});
   if(frame%5===0){$('coords').textContent=`${Math.abs(boatPosition.z*.06).toFixed(2)}° ${boatPosition.z<0?'N':'S'}   ${Math.abs(boatPosition.x*.06).toFixed(2)}° ${boatPosition.x<0?'W':'E'}`;drawMap();$('speed-value').textContent=Math.abs(speed).toFixed(1);$('health-value').textContent=`${Math.round(health)}%`;$('health-bar').setAttribute('aria-valuenow',String(Math.round(health)));$('health-bar').firstElementChild.style.width=`${health}%`;$('ship-state').textContent=shipState==='falling'?'OVER THE RIM / VESSEL LOST':shipState==='sinking'?'HULL BREACHED / TAKING ON WATER':shipState==='sunk'?'VESSEL LOST / R TO RELAUNCH':shipState==='moored'?'MOORED / ENGINE OFF':`AUXILIARY MOTOR / ${up?'THROTTLE':Math.abs(speed)>.5?'CRUISING':'IDLE'}`;}
 }
 const targetCam=new THREE.Vector3(),lookAt=new THREE.Vector3();let lastTime=performance.now();
@@ -358,7 +360,7 @@ try{
   const hemisphere=new THREE.HemisphereLight('#fff9e7','#4b9b9a',2.8);scene.add(hemisphere);const sun=new THREE.DirectionalLight('#fff4d6',3.2);sun.position.set(-35,60,25);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);sun.shadow.camera.left=-70;sun.shadow.camera.right=70;sun.shadow.camera.top=70;sun.shadow.camera.bottom=-70;sun.shadow.normalBias=.05;scene.add(sun);
   buildWater();[mats.sand,mats.rock,mats.wood,mats.darkWood].forEach(m=>applyWetSurface(m,water.material.uniforms));buildWorld();boat=createBoat();boat.userData.sails.at(-1).material=boat.userData.sails.at(-1).material.clone();boat.userData.sails.at(-1).material.color.set(PENNANTS.find(p=>p.id===captain.state.pennant).color);createBuoyTrail();createOceanSkirt(water,scene);waterView=createWaterView(renderer,water,camera);water.material.defines={WATER_TRANSMISSION:1};water.material.needsUpdate=true;
   marine=createMarineDetails({scene,island,palm,dock,ring,mats,pulse,obstacles,onSound:(kind,power)=>audio.effect(kind,power)});
-    pirates=createPirates({scene,marine,obstacles,pulse,takeDamage,toast,audio,onResult:kind=>{if(kind==='escaped'||kind==='defeated')captain.event(kind);},reduced:reducedMotion,onAudio:async()=>{
+    pirates=createPirates({scene,marine,obstacles,pulse,takeDamage,toast,audio,onResult:kind=>{if(kind==='escaped'||kind==='defeated'){captain.event(kind);audio.effect('victory');}else audio.effect('defeat');},reduced:reducedMotion,onAudio:async()=>{
     try{await audio.previewPirateMusic();soundOn=true;$('sound').setAttribute('aria-pressed','true');$('sound').setAttribute('aria-label','Disable ocean sound');$('sound-label').textContent='Sound on';toast('Pirate audio enabled.');}catch{toast('Audio could not start. Check the browser tab sound setting.');}
   }});
   voyage=createVoyageActivities(scene,toast,audio,(type,id)=>type==='race'?captain.race(id):captain.event(type,id));guides=createDolphinGuides(scene,pulse,audio,toast,marine,obstacles,()=>captain.event('guides'));navalMap=createNavalMap({destinations,obstacles,activities:voyage.sites,onOpen:()=>keys.clear(),onRoute:points=>guides.setRoute(points)});createOceanEdge(scene,water.material.uniforms);

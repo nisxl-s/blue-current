@@ -1,6 +1,6 @@
 import {ACHIEVEMENTS,CONTRACTS,PENNANTS} from './captain-progress.js';
 
-export function createCaptainJournal(progress,{onOpen=()=>{},onCourse=()=>{},onEquip=()=>{},onTrail=()=>{}}={}){
+export function createCaptainJournal(progress,{onOpen=()=>{},onCourse=()=>{},onEquip=()=>{},onTrail=()=>{},onAward=()=>{}}={}){
   const button=document.createElement('button');button.id='journal-button';button.className='journal-button';button.textContent='Captain’s journal';button.setAttribute('aria-keyshortcuts','J');
   document.querySelector('nav').prepend(button);
   const hud=document.createElement('button');hud.className='captain-objective';hud.setAttribute('aria-label','Open captain journal and objectives');document.querySelector('main').append(hud);
@@ -39,7 +39,7 @@ export function createCaptainJournal(progress,{onOpen=()=>{},onCourse=()=>{},onE
   dialog.addEventListener('click',e=>{if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}});
   function update(dt){
     clock+=dt;saveClock+=dt;const earnedNow=progress.notifications();queue.push(...earnedNow);if(earnedNow.length||saveClock>=5){progress.save();saveClock=0;}noticeTime-=dt;
-    if(noticeTime<=0){notice.hidden=true;if(queue.length){const a=queue.shift();notice.innerHTML=`<span class="medal-seal" aria-hidden="true">✦</span><div><small>COMMENDATION EARNED · +${a.xp} RENOWN</small><strong>${a.name}</strong><span>${progress.rank} · ${progress.xp()} renown</span></div>`;notice.hidden=false;noticeTime=4.5;}}
+    if(noticeTime<=0){notice.hidden=true;if(queue.length){const a=queue.shift();onAward(a);notice.innerHTML=`<span class="medal-seal" aria-hidden="true">✦</span><div><small>COMMENDATION EARNED · +${a.xp} RENOWN</small><strong>${a.name}</strong><span>${progress.rank} · ${progress.xp()} renown</span></div>`;notice.hidden=false;noticeTime=4.5;}}
     if(clock<.5)return;clock=0;
     const a=ACHIEVEMENTS.find(a=>a.id===tracked&&progress.count(a.stat)<a.goal)??ACHIEVEMENTS.find(a=>progress.count(a.stat)<a.goal),c=progress.contract;
     const heading=c?c.name:a?.name??'All commendations earned',detail=c?`${c.phase==='pickup'?'Load at '+c.from:'Deliver to '+c.to+' · '+Math.ceil(c.remaining)+' s'} · slow below 2 knots`:a?`${Math.floor(Math.min(a.goal,progress.count(a.stat)))} / ${a.goal} · ${a.text}`:'Open the journal to fly your colors.';

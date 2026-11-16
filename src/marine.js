@@ -1,4 +1,5 @@
 import {CHASE_TICK,chaseVoices,marineMix} from './nautical-score.js';
+import {scoreMood,scoreVoices,SCORE_TICKS,SIGNALS} from './adaptive-score.js';
 // The CPU and GPU use these identical wave terms. Time freezes in reduced-motion mode.
 export const WAVES = [
   { a: .48, x: .24, z: .10, w: 1.08 },
@@ -108,6 +109,13 @@ export class MarineAudio {
     this.musicGain=c.createGain();this.musicGain.gain.value=0;
     const scoreFilter=c.createBiquadFilter();scoreFilter.type='lowpass';scoreFilter.frequency.value=2100;scoreFilter.Q.value=.4;
     this.musicGain.connect(scoreFilter).connect(this.master);this.musicStep=0;this.nextMusicBeat=0;
+    this.scoreBuses={};for(const mood of ['freedom','dread','chase']){const bus=c.createGain();bus.gain.value=0;bus.connect(this.musicGain);this.scoreBuses[mood]=bus;}
+    this.orchestraWaves={};
+    for(const name of ['strings','cello','horn','flute']){const real=new Float32Array(20),imag=new Float32Array(20);for(let h=1;h<20;h++)imag[h]=name==='flute'?(h===1?1:h===2?.15:0):Math.pow(h,name==='horn'?-1.2:-1.55)*(name==='horn'&&h%2===0?.45:1);this.orchestraWaves[name]=c.createPeriodicWave(real,imag);}
+    // A single shared, short room gives instruments space without per-note delay chains.
+    const room=c.createConvolver(),impulse=c.createBuffer(2,c.sampleRate*1.3,c.sampleRate);
+    for(let ch=0;ch<2;ch++){const data=impulse.getChannelData(ch);for(let i=0;i<data.length;i++)data[i]=(Math.random()*2-1)*Math.pow(1-i/data.length,3)*.25;}
+    room.buffer=impulse;const wet=c.createGain();wet.gain.value=.14;this.musicGain.connect(room).connect(wet).connect(this.master);
     this.noise=c.createBuffer(1,c.sampleRate*5,c.sampleRate);const data=this.noise.getChannelData(0);let last=0;
     for(let i=0;i<data.length;i++){last=(last+Math.random()*.06-.03)/1.025;data[i]=last*5;}
     const sea=c.createBufferSource();sea.buffer=this.noise;sea.loop=true;this.seaFilter=c.createBiquadFilter();this.seaFilter.type='lowpass';this.seaFilter.frequency.value=600;
@@ -121,16 +129,24 @@ export class MarineAudio {
       source.connect(filter).connect(gain).connect(this.master);source.start();this[`${kind}Gain`]=gain;
     }
   }
-  update({time,speed,throttle,heave,alive,parked,gullDistance=30,hidden=false}){
+  update({time,speed,throttle,heave,alive,parked,gullDistance=30,hidden=false,situation}){
     if(!this.context)return;const c=this.context,t=c.currentTime;
-    const musicPlaying=(this.pirateMusic||t<(this.musicPreviewUntil??0))&&this.enabled&&!hidden;
-    if(musicPlaying&&!this.wasMusicPlaying){this.musicStep=0;this.nextMusicBeat=t;}
+    const preview=t<(this.musicPreviewUntil??0);
+    const mood=situation?scoreMood({alive,parked,...situation}):(this.pirateMusic||preview?'chase':'silence');
+    const nextMood=preview?'chase':mood,musicPlaying=nextMood!=='silence'&&this.enabled&&!hidden;
+    if(musicPlaying&&(!this.wasMusicPlaying||this.scoreMood!==nextMood)){this.musicStep=0;this.nextMusicBeat=t;}
+    this.scoreMood=nextMood;
     this.wasMusicPlaying=musicPlaying;
-    this.musicGain?.gain.setTargetAtTime(musicPlaying?.85:0,t,musicPlaying?.7:.45);
+    const scoreLevel=nextMood==='chase'?.85:nextMood==='dread'?.58:.45;
+    this.musicGain?.gain.setTargetAtTime(musicPlaying?(t<(this.signalDuckUntil??0)?.22:scoreLevel):0,t,.45);
+    const danger=(situation?.edge??0)>.45||!!situation?.urgent;
+    if(danger&&!this.wasDanger)this.effect('warning',.8);this.wasDanger=danger;
+    for(const [name,bus] of Object.entries(this.scoreBuses??{}))bus.gain.setTargetAtTime(name===nextMood&&musicPlaying?1:0,t,1.1);
     if(musicPlaying&&t>=(this.nextMusicBeat??0)){
-      const step=(this.musicStep??0)%48;
-      for(const voice of chaseVoices(step)){const hz=440*2**((voice.note-69)/12);this.tone(hz,hz,voice.duration,voice.volume,0,voice.type,voice.pan,this.musicGain);}
-      this.musicStep=(step+1)%48;this.nextMusicBeat=t+CHASE_TICK;
+      const step=(this.musicStep??0)%48,bus=this.scoreBuses?.[nextMood]??this.musicGain;
+      if(this.orchestraWaves){for(const v of scoreVoices(nextMood,step))this.instrument(v,bus);}
+      else for(const v of chaseVoices(step)){const hz=440*2**((v.note-69)/12);this.tone(hz,hz,v.duration,v.volume,0,v.type,v.pan,bus);}
+      this.musicStep=(step+1)%48;this.nextMusicBeat=t+(SCORE_TICKS[nextMood]??CHASE_TICK);
     }
     const active=alive&&!parked&&!hidden;const power=active?Math.min(1,Math.abs(speed)/12+throttle*.3):0;
     if(!hidden){const running=active&&this.enabled;if(running!==!!this.running){this.effect(running?'engine-start':'engine-stop',.65);this.running=running;}}
@@ -144,6 +160,18 @@ export class MarineAudio {
     this.windGain?.gain.setTargetAtTime(mix.wind,t,1.2);
     this.rainGain?.gain.setTargetAtTime(mix.rain,t,1.5);
     if(this.enabled&&!hidden&&!musicPlaying&&time>this.nextGull){this.gull(Math.max(.008,.035/(1+gullDistance*.06)));this.nextGull=time+16+Math.random()*15;}
+  }
+  instrument(v,destination=this.musicGain,delay=0){
+    if((this.activeVoices??0)>=40)return;
+    const c=this.context,t=c.currentTime+delay,hz=440*2**((v.note-69)/12),osc=c.createOscillator(),gain=c.createGain(),filter=c.createBiquadFilter(),pan=c.createStereoPanner();
+    this.activeVoices=(this.activeVoices??0)+1;
+    if(v.instrument==='drum'){osc.type='sine';osc.frequency.setValueAtTime(110,t);osc.frequency.exponentialRampToValueAtTime(35,t+v.duration);}
+    else{osc.setPeriodicWave(this.orchestraWaves[v.instrument]??this.orchestraWaves.strings);osc.frequency.value=hz;osc.detune.value=v.pan*7;}
+    filter.type='lowpass';filter.frequency.value=v.instrument==='horn'?1400:v.instrument==='strings'?2400:1100;filter.Q.value=.5;pan.pan.value=v.pan??0;
+    const attack=v.instrument==='strings'?.025:v.instrument==='drum'?.008:.09,release=v.instrument==='drum'?.12:.3;
+    gain.gain.setValueAtTime(.0001,t);gain.gain.linearRampToValueAtTime(v.volume,t+attack);gain.gain.setTargetAtTime(v.volume*.62,t+attack,.12);gain.gain.exponentialRampToValueAtTime(.0001,t+v.duration+release);
+    osc.connect(filter).connect(gain).connect(pan).connect(destination??this.master);osc.start(t);osc.stop(t+v.duration+release+.02);
+    osc.onended=()=>{this.activeVoices--;osc.disconnect();filter.disconnect();gain.disconnect();pan.disconnect();};
   }
   gull(volume){
     const c=this.context,t=c.currentTime;
@@ -164,9 +192,14 @@ export class MarineAudio {
   effect(kind,power=1){
     if(!this.context||!this.enabled)return;
     this.effectTimes??=new Map();const now=this.context.currentTime,last=this.effectTimes.get(kind)??-Infinity;
-    const cooldown=kind==='splash'?.22:['explosion','bomb-blast','cannon'].includes(kind)?.16:.06;
+    const cooldown=kind==='warning'?3:kind==='notice'?.9:kind==='achievement'?1:kind==='splash'?.22:['explosion','bomb-blast','cannon'].includes(kind)?.16:.06;
     if(now-last<cooldown)return;this.effectTimes.set(kind,now);
     power=Math.max(0,Math.min(1,power))*.55;
+    if(SIGNALS[kind]){if(['achievement','victory','defeat','warning'].includes(kind))this.signalDuckUntil=now+2.5;
+      for(const [note,duration,volume,delay]of SIGNALS[kind]){
+      if(this.orchestraWaves&&['achievement','victory','defeat'].includes(kind))this.instrument({note,duration,volume:volume*power*2,instrument:'horn',pan:0},this.master,delay);
+      else{const hz=440*2**((note-69)/12);this.tone(hz,hz,duration,volume*power*2,delay,'triangle');}
+    }return;}
     if(kind==='pirate-horn'){this.tone(165,165,1.2,power*.14,0,'triangle');this.tone(247,247,1,power*.055,.12,'sine');return;}
     if(kind==='bomb-drop'){this.tone(380,170,.1,power*.1);this.hiss(1000,.4,power*.4,.08);return;}
     if(kind==='bomb-armed'){this.tone(660,740,.12,power*.065);return;}
