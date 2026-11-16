@@ -1,3 +1,4 @@
+import {CHASE_TICK,chaseVoices,marineMix} from './nautical-score.js';
 // The CPU and GPU use these identical wave terms. Time freezes in reduced-motion mode.
 export const WAVES = [
   { a: .48, x: .24, z: .10, w: 1.08 },
@@ -102,44 +103,47 @@ export class MarineAudio {
   }
   init(){
     const c=this.context=new AudioContext();this.master=c.createGain();this.master.gain.value=0;
-    const limiter=c.createDynamicsCompressor();limiter.threshold.value=-12;limiter.knee.value=12;limiter.ratio.value=6;limiter.attack.value=.003;limiter.release.value=.25;
+    const limiter=c.createDynamicsCompressor();limiter.threshold.value=-10;limiter.knee.value=18;limiter.ratio.value=4;limiter.attack.value=.012;limiter.release.value=.4;
     this.master.connect(limiter).connect(c.destination);
-    this.musicGain=c.createGain();this.musicGain.gain.value=0;this.musicGain.connect(this.master);this.musicStep=0;this.nextMusicBeat=0;
+    this.musicGain=c.createGain();this.musicGain.gain.value=0;
+    const scoreFilter=c.createBiquadFilter();scoreFilter.type='lowpass';scoreFilter.frequency.value=2100;scoreFilter.Q.value=.4;
+    this.musicGain.connect(scoreFilter).connect(this.master);this.musicStep=0;this.nextMusicBeat=0;
     this.noise=c.createBuffer(1,c.sampleRate*5,c.sampleRate);const data=this.noise.getChannelData(0);let last=0;
     for(let i=0;i<data.length;i++){last=(last+Math.random()*.06-.03)/1.025;data[i]=last*5;}
     const sea=c.createBufferSource();sea.buffer=this.noise;sea.loop=true;this.seaFilter=c.createBiquadFilter();this.seaFilter.type='lowpass';this.seaFilter.frequency.value=600;
-    this.seaGain=c.createGain();this.seaGain.gain.value=.2;sea.connect(this.seaFilter).connect(this.seaGain).connect(this.master);sea.start();
+    this.seaGain=c.createGain();this.seaGain.gain.value=0;sea.connect(this.seaFilter).connect(this.seaGain).connect(this.master);sea.start();
     const spray=c.createBufferSource();spray.buffer=this.noise;spray.loop=true;const high=c.createBiquadFilter();high.type='highpass';high.frequency.value=900;this.sprayGain=c.createGain();this.sprayGain.gain.value=0;spray.connect(high).connect(this.sprayGain).connect(this.master);spray.start();
     this.engineGain=c.createGain();this.engineGain.gain.value=0;const filter=c.createBiquadFilter();filter.type='lowpass';filter.frequency.value=420;this.engineGain.connect(filter).connect(this.master);
     this.engines=[1,2,3].map((multiple,i)=>{const osc=c.createOscillator(),gain=c.createGain();osc.type=i?'sine':'triangle';osc.frequency.value=35*multiple;gain.gain.value=.35/(i+1);osc.connect(gain).connect(this.engineGain);osc.start();return {osc,multiple};});
     for(const kind of ['wind','rain']){
       const source=c.createBufferSource(),filter=c.createBiquadFilter(),gain=c.createGain();source.buffer=this.noise;source.loop=true;
-      filter.type=kind==='wind'?'bandpass':'highpass';filter.frequency.value=kind==='wind'?420:1200;filter.Q.value=.5;gain.gain.value=0;
+      filter.type=kind==='wind'?'bandpass':'lowpass';filter.frequency.value=kind==='wind'?320:1900;filter.Q.value=.35;gain.gain.value=0;
       source.connect(filter).connect(gain).connect(this.master);source.start();this[`${kind}Gain`]=gain;
     }
   }
   update({time,speed,throttle,heave,alive,parked,gullDistance=30,hidden=false}){
     if(!this.context)return;const c=this.context,t=c.currentTime;
     const musicPlaying=(this.pirateMusic||t<(this.musicPreviewUntil??0))&&this.enabled&&!hidden;
-    this.musicGain?.gain.setTargetAtTime(musicPlaying?1:0,t,.15);
+    if(musicPlaying&&!this.wasMusicPlaying){this.musicStep=0;this.nextMusicBeat=t;}
+    this.wasMusicPlaying=musicPlaying;
+    this.musicGain?.gain.setTargetAtTime(musicPlaying?.85:0,t,musicPlaying?.7:.45);
     if(musicPlaying&&t>=(this.nextMusicBeat??0)){
-      const melody=[62,65,69,74,72,69,65,69,60,64,67,72,70,67,64,60,58,62,65,70,69,65,62,65,57,61,64,69,67,64,61,57];
-      const step=(this.musicStep??0)%melody.length,hz=440*2**((melody[step]-69)/12);
-      this.tone(hz,hz,.2,.2,0,'triangle',-.15,this.musicGain);this.tone(hz*1.004,hz*1.004,.17,.075,0,'sawtooth',.15,this.musicGain);
-      if(step%2===0){const bass=440*2**(([38,36,34,33][Math.floor(step/8)]-69)/12);this.tone(bass,bass,.3,.2,0,'triangle',0,this.musicGain);}
-      this.musicStep=(step+1)%melody.length;this.nextMusicBeat=t+.22;
+      const step=(this.musicStep??0)%48;
+      for(const voice of chaseVoices(step)){const hz=440*2**((voice.note-69)/12);this.tone(hz,hz,voice.duration,voice.volume,0,voice.type,voice.pan,this.musicGain);}
+      this.musicStep=(step+1)%48;this.nextMusicBeat=t+CHASE_TICK;
     }
     const active=alive&&!parked&&!hidden;const power=active?Math.min(1,Math.abs(speed)/12+throttle*.3):0;
     if(!hidden){const running=active&&this.enabled;if(running!==!!this.running){this.effect(running?'engine-start':'engine-stop',.65);this.running=running;}}
     this.enginePitch=34+power*70;
     for(const {osc,multiple} of this.engines)osc.frequency.setTargetAtTime(this.enginePitch*multiple+Math.sin(time*18)*.7,t,.12);
-    this.engineGain.gain.setTargetAtTime(active?.025+power*.14:0,t,.18);
-    this.seaGain.gain.setTargetAtTime(hidden?0:(.16+Math.sin(time*.8)*.055+Math.min(.1,Math.abs(heave)*.06))*(musicPlaying?.35:1),t,.3);
-    this.seaFilter.frequency.setTargetAtTime(420+power*550+(Math.sin(time*.8)+1)*140,t,.2);
-    this.sprayGain.gain.setTargetAtTime(hidden?0:power*.3*(musicPlaying?.4:1),t,.15);
-    this.windGain?.gain.setTargetAtTime(hidden?0:(this.weather?.gust??.2)*.42*(musicPlaying?.4:1),t,.8);
-    this.rainGain?.gain.setTargetAtTime(hidden?0:(this.weather?.storm??0)*.95*(musicPlaying?.5:1),t,1);
-    if(this.enabled&&!hidden&&time>this.nextGull){this.gull(Math.max(.025,.14/(1+gullDistance*.045)));this.nextGull=time+6+Math.random()*7;}
+    const mix=marineMix({power,heave,gust:this.weather?.gust,storm:this.weather?.storm,music:musicPlaying,hidden,time});
+    this.engineGain.gain.setTargetAtTime(active?mix.engine:0,t,.4);
+    this.seaGain.gain.setTargetAtTime(mix.sea,t,.8);
+    this.seaFilter.frequency.setTargetAtTime(260+power*240+(Math.sin(time*.35)+1)*55,t,.6);
+    this.sprayGain.gain.setTargetAtTime(mix.spray,t,.5);
+    this.windGain?.gain.setTargetAtTime(mix.wind,t,1.2);
+    this.rainGain?.gain.setTargetAtTime(mix.rain,t,1.5);
+    if(this.enabled&&!hidden&&!musicPlaying&&time>this.nextGull){this.gull(Math.max(.008,.035/(1+gullDistance*.06)));this.nextGull=time+16+Math.random()*15;}
   }
   gull(volume){
     const c=this.context,t=c.currentTime;
@@ -148,7 +152,7 @@ export class MarineAudio {
   tone(frequency,end,duration,volume,delay=0,type='sine',pan=0,destination=this.master){
     const c=this.context,t=c.currentTime+delay,osc=c.createOscillator(),gain=c.createGain(),stereo=c.createStereoPanner();
     osc.type=type;osc.frequency.setValueAtTime(frequency,t);osc.frequency.exponentialRampToValueAtTime(Math.max(10,end),t+duration);
-    stereo.pan.value=pan;gain.gain.setValueAtTime(.0001,t);gain.gain.linearRampToValueAtTime(volume,t+.012);gain.gain.exponentialRampToValueAtTime(.0001,t+duration);
+    stereo.pan.value=pan;gain.gain.setValueAtTime(.0001,t);gain.gain.linearRampToValueAtTime(volume,t+Math.min(.04,duration*.25));gain.gain.exponentialRampToValueAtTime(.0001,t+duration);
     osc.connect(gain).connect(stereo).connect(destination);osc.onended=()=>{osc.disconnect();gain.disconnect();stereo.disconnect();};osc.start(t);osc.stop(t+duration+.02);
   }
   hiss(frequency,duration,volume,delay=0,type='bandpass'){
@@ -159,24 +163,26 @@ export class MarineAudio {
   }
   effect(kind,power=1){
     if(!this.context||!this.enabled)return;
-    power=Math.max(0,Math.min(1,power));
-    if(kind==='pirate-horn'){this.tone(147,147,.9,power*.22,0,'sawtooth');this.tone(220,220,.85,power*.1,.06,'triangle');return;}
+    this.effectTimes??=new Map();const now=this.context.currentTime,last=this.effectTimes.get(kind)??-Infinity;
+    const cooldown=kind==='splash'?.22:['explosion','bomb-blast','cannon'].includes(kind)?.16:.06;
+    if(now-last<cooldown)return;this.effectTimes.set(kind,now);
+    power=Math.max(0,Math.min(1,power))*.55;
+    if(kind==='pirate-horn'){this.tone(165,165,1.2,power*.14,0,'triangle');this.tone(247,247,1,power*.055,.12,'sine');return;}
     if(kind==='bomb-drop'){this.tone(380,170,.1,power*.1);this.hiss(1000,.4,power*.4,.08);return;}
-    if(kind==='bomb-armed'){this.tone(880,980,.08,power*.09);return;}
+    if(kind==='bomb-armed'){this.tone(660,740,.12,power*.065);return;}
     if(kind==='bomb-blast'){
       this.tone(75,19,1.4,power*.4);this.hiss(300,1.5,power*.7,0,'lowpass');this.hiss(1800,.8,power*.35,.13);return;
     }
     if(kind==='cannon'){
-      this.hiss(1400,.07,power*.45,0,'highpass');this.tone(100,28,.7,power*.3);this.hiss(550,.8,power*.5,.02,'lowpass');return;
+      this.hiss(1000,.055,power*.2,0,'bandpass');this.tone(85,28,.7,power*.3);this.hiss(420,.65,power*.32,.02,'lowpass');return;
     }
     if(kind==='thunder'){
       this.tone(45,16,3.8,power*.25);this.hiss(330,4,power*.65,0,'lowpass');this.hiss(750,1.1,power*.32,.08,'lowpass');
       this.hiss(180,3.8,power*.3,.7,'lowpass');return;
     }
     if(kind==='dolphin'){
-      if(this.context.currentTime<(this.nextDolphin??0))return;this.nextDolphin=this.context.currentTime+1.8;
-      this.tone(2100,3900,.18,power*.055,0,'sine',-.25);this.tone(3900,2400,.25,power*.04,.16,'sine',.25);
-      for(let i=0;i<4;i++)this.hiss(4200,.018,power*.09,.5+i*.055);return;
+      if(this.context.currentTime<(this.nextDolphin??0))return;this.nextDolphin=this.context.currentTime+2.8;
+      this.tone(1700,2600,.2,power*.04,0,'sine',-.25);this.tone(2600,1900,.28,power*.025,.2,'sine',.25);return;
     }
     if(kind==='engine-start'){
       for(let i=0;i<7;i++)this.tone(65+i*5,45+i*5,.09,power*.08,i*.075,'triangle');

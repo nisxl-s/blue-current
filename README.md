@@ -191,3 +191,7 @@ Built with [Three.js](https://threejs.org/) and [Vite](https://vite.dev/). Typog
 ⚓ Blue Current · Sea Wren · The Archipelago
 
 </div>
+
+### Sound direction
+The original chase cue, Beyond the Shoals, uses a 6/8 pulse, warm triangle string-like voices, low bass, and deliberate rests. Softer sea, engine, spray, rain, and wind layers leave more headroom; ambience ducks during pursuit. Repeated effects are rate-limited, dolphin calls are less frequent, and cannon attacks are less sharp. All audio remains synthesized, with no film recordings or soundtrack quotations.
+
