@@ -195,3 +195,7 @@ Built with [Three.js](https://threejs.org/) and [Vite](https://vite.dev/). Typog
 ### Sound direction
 The original chase cue, Beyond the Shoals, uses a 6/8 pulse, warm triangle string-like voices, low bass, and deliberate rests. Softer sea, engine, spray, rain, and wind layers leave more headroom; ambience ducks during pursuit. Repeated effects are rate-limited, dolphin calls are less frequent, and cannon attacks are less sharp. All audio remains synthesized, with no film recordings or soundtrack quotations.
 
+
+### Adaptive cinematic audio
+The original soundtrack now changes with the situation: spacious flute and sustained strings for freedom on open water; low cello, uneasy intervals, and heartbeat-like percussion at night, in storms, near the rim, or at critical hull integrity; and driving strings, horns, and drums during pirate pursuit. The moods crossfade through separate buses and share a short hall response. Button clicks, close actions, notices, warnings, achievements, victories, and defeats have distinct cues. Important signals briefly lower the music so they stay readable. Orchestral timbres are synthesized, not sampled film instruments. Music voices are capped and disconnected after playback. No movie melodies or recordings are used.
+
